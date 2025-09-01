@@ -61,49 +61,14 @@ class Coconut(nn.Module):
         kv_cache = None
 
         for pass_idx in range(max_n_latents):
-
-            if kv_cache == None:
-                # first forward pass
-                outputs = self.base_causallm(
-                    inputs_embeds=inputs_embeds[
-                        :, next_compute_range[0] : next_compute_range[1], :
-                    ],
-                    attention_mask=attention_mask[
-                        :, next_compute_range[0] : next_compute_range[1]
-                    ],
-                    position_ids=position_ids[
-                        :, next_compute_range[0] : next_compute_range[1]
-                    ],
-                    output_hidden_states=True,
-                )
-                hidden_states_offset = 0
-
-            else:
-                # extract kv cache to reuse
-                past_key_values = [
-                    (
-                        k[:, :, : next_compute_range[0], :],
-                        v[:, :, : next_compute_range[0], :],
-                    )
-                    for k, v in kv_cache
-                ]
-
-                outputs = self.base_causallm(
-                    inputs_embeds=inputs_embeds[
-                        :, next_compute_range[0] : next_compute_range[1], :
-                    ],
-                    attention_mask=attention_mask[:, : next_compute_range[1]],
-                    position_ids=position_ids[
-                        :, next_compute_range[0] : next_compute_range[1]
-                    ],
-                    past_key_values=past_key_values,
-                    output_hidden_states=True,
-                )
-
-                hidden_states_offset = next_compute_range[0]
-                # when we use kv_cache for the first k tokens
-                # in `outputs.hidden_states`, [0, k) will be skipped
-                # so we need to keep this offset to correctly use the last hidden states
+            # Simplified: always do full forward pass without KV cache
+            outputs = self.base_causallm(
+                inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                output_hidden_states=True,
+            )
+            hidden_states_offset = 0
 
             logits.append(outputs.logits)
 
@@ -185,6 +150,18 @@ class Coconut(nn.Module):
         logits = torch.cat(logits, dim=-2)
         shift_logits = logits[..., :-1, :].contiguous()
         shift_labels = labels[..., 1:].contiguous()
+        
+        # Handle length mismatch between logits and labels
+        if shift_logits.shape[1] > shift_labels.shape[1]:
+            # Pad labels with -100 (ignore index)
+            pad_size = shift_logits.shape[1] - shift_labels.shape[1]
+            padding = torch.full((shift_labels.shape[0], pad_size), -100, 
+                               dtype=shift_labels.dtype, device=shift_labels.device)
+            shift_labels = torch.cat([shift_labels, padding], dim=1)
+        elif shift_logits.shape[1] < shift_labels.shape[1]:
+            # Truncate labels to match logits
+            shift_labels = shift_labels[:, :shift_logits.shape[1]]
+        
         loss_fct = CrossEntropyLoss()
         loss = loss_fct(
             shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)

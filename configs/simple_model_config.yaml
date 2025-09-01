@@ -1,0 +1,49 @@
+# Config for training simple attention model with Coconut
+name: "simple_attention_coconut"
+project: "coconut_simple"
+
+# Model settings
+use_simple_model: true
+model_id: "gpt2"  # Only used for tokenizer if not loading checkpoint
+hidden_size: 256
+num_heads: 8
+max_length: 512
+
+# Training settings
+num_epochs: 10
+epochs_per_stage: 2
+batch_size_training: 4
+gradient_accumulation_steps: 2
+lr: 0.0001
+weight_decay: 0.01
+bf16: false
+
+# Data paths
+train_path: "data/gsm_train.json"
+val_path: "data/gsm_valid.json"
+
+# Coconut settings
+coconut: true
+c_thought: 2  # Number of latent tokens per stage
+max_latent_stage: 3
+uniform_prob: 0.1
+pad_latent_to_max: false
+
+# Special modes (set to false for normal Coconut training)
+cot: false
+no_cot: false
+no_thoughts: false
+
+# Checkpointing
+save_path: "checkpoints/"
+load_model_path: "simple_model_checkpoint"
+resume: 0
+save_only_improve: true
+reset_optimizer: false
+
+# Evaluation
+only_eval: false
+
+# Debug settings
+debug: false
+seed: 42
